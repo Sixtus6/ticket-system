@@ -12,6 +12,7 @@ import { SWAGGEROPTIONS } from './config/swagger.config';
 import cors from 'cors';
 import { db } from './models/database.connection';
 import adminRouter from './routes/admin.routes';
+import QueueService from './services/queue.service';
 
 
 const app = express();
@@ -53,6 +54,10 @@ app.use('/api', approuter);
 
 db.sequelize.sync({ alter: true }).then(() => {
   const server = app.listen(serverport, () => {
+    QueueService.connectRabbitMQ().then(() => {
+      QueueService.processWaitingListQueue()
+    })
+      .catch(error => console.error('Initialization failed:', error));;
     console.log(`Server is running at http://localhost:${serverport}`);
   });
 });
