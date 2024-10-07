@@ -98,8 +98,14 @@ class AccountService {
 
         let response: {};
 
-        const accountInstances = await Account.findAll({
+        let accountInstances = await Account.findAll({
+            include: [Booking, WaitingList],
             attributes: { exclude: ['password'] }
+        });
+
+        accountInstances.forEach(obj => {
+            obj.dataValues.Bookings = obj.dataValues.Bookings.length
+            obj.dataValues.WaitingLists = obj.dataValues.WaitingLists.length
         });
 
         response = { error: false, message: ApiResponse.pass.create, data: accountInstances }
@@ -111,7 +117,7 @@ class AccountService {
 
         let response: {}
 
-        const existingInstance = await Account.findByPk(id, {
+        let existingInstance = await Account.findByPk(id, {
             include: [Booking, WaitingList],
             attributes: { exclude: ['password'] }
         });
@@ -121,6 +127,8 @@ class AccountService {
             return { code: ApiResponse.code.not_found, body: response };
         }
 
+        existingInstance.dataValues.Bookings = existingInstance.dataValues.Bookings.length
+        existingInstance.dataValues.WaitingLists = existingInstance.dataValues.WaitingLists.length
         response = { error: false, message: ApiResponse.pass.create, data: existingInstance }
         return { code: ApiResponse.code.success, body: response };
 

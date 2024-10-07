@@ -61,7 +61,7 @@ class QueueService {
         this.channelInstance.sendToQueue(this.QUEUE_NAME, Buffer.from(message), { persistent: true });
         let data: any = { event: event!.name, totalTickets: event!.totalTickets, availableTickets: event!.availableTickets }
 
-        console.log(`****************************\nEnqueued user ${user?.name} with userId of ${userId} for event ${event?.name} to the waiting list queue\n****************Event-details*******************\nevent_name: ${data.event}\ntotal_tickets:${data.totalTickets}\navailable_ticket:${data.availableTickets}\nqueue_length:${event!.WaitingLists.length}\n****************************`);
+        console.log(`****************************\nEnqueued user ${user?.username} with userId of ${userId} for event ${event?.name} to the waiting queue \n****************Event-details*******************\nevent_name: ${data.event}\ntotal_tickets:${data.totalTickets}\navailable_ticket:${data.availableTickets}\nqueue_length:${event!.WaitingLists.length}\n****************************`);
     };
 
     // Process messages from the waiting list queue
@@ -92,6 +92,7 @@ class QueueService {
                             order: [['createdAt', 'ASC']], // Order by createdAt in ascending order
                             transaction,
                         });
+
                         //If there is no user on the queue cancel the operation
                         if (!waitingUser) {
                             await transaction.commit();
@@ -99,24 +100,37 @@ class QueueService {
                             console.log('There is no user to assign the Ticket to at the moment')
                             return;
                         }
-
+                        const userNewAssignee = await Account.findByPk(waitingUser!.userId)
+                        const userThatCancled = await Account.findByPk(userId)
                         // Assign the ticket to the user from the waiting list
-                        await Booking.create({ userId: waitingUser!.userId, eventId, status: 'BOOKED', reallocated: true }, { transaction });
-
+                        const bookInstance = await Booking.create({ userId: waitingUser!.userId, eventId, status: 'BOOKED', reallocated: true }, { transaction });
+                        if (bookInstance) {
+                            console.log(`assigned user ${userThatCancled?.username} event ticket to ${userNewAssignee?.username}`)
+                        }
                         event.availableTickets -= 1;
-                        await event.save({ transaction });
-                        const user = await Account.findByPk(userId)
+                        console.log('set event availableTickets');
+                        await event.save({ transaction })
+                        // await transaction.commit();
                         // Remove the user from the waiting list
-                        await WaitingList.destroy({ where: { userId, eventId }, transaction });
-                        await event!.reload({ include: [Booking, WaitingList] });
-                        console.log(`****************************\nProcessed ticket allocation for user ${user?.name} with userId of ${userId} for ${event.name} event\n****************Event-details*******************\nevent_name: ${event.name}\ntotal_tickets:${event.totalTickets}\navailable_ticket:${event.availableTickets}\nqueue_length:${event!.WaitingLists.length}\n****************************`);
-                    }
+                        const deletedUser = await WaitingList.destroy({ where: { userId, eventId }, transaction });
+                        if (deletedUser) {
+                            console.log(`removed user ${userThatCancled?.username} with id of ${userThatCancled?.id} from the Queue`)
+                        }
+                        await transaction.commit();
 
-                    await transaction.commit();
+                        await userNewAssignee?.addBooking(bookInstance);
+                        await event?.addBooking(bookInstance);
+                        await event!.reload({ include: [Booking, WaitingList] });
+                        await waitingUser.reload()
+                        console.log(`****************************\nProcessed ticket allocation for user ${userThatCancled?.username} with userId of ${userId} to ${userNewAssignee?.username} with userId of ${userNewAssignee?.id} for ${event.name} event\n****************Event-details*******************\nevent_name: ${event.name}\ntotal_tickets:${event.totalTickets}\navailable_ticket:${event.availableTickets}\nqueue_length:${event!.WaitingLists.length}\n****************************`);
+                    } else {
+                        console.log('eles');
+                        await transaction.commit();
+                    }
 
                     this.channelInstance.ack(msg);
                 } catch (error) {
-                    await transaction.rollback();
+                    //  await transaction.rollback();
                     console.error('Error processing waiting list', error);
 
 

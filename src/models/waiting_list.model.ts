@@ -2,6 +2,7 @@ import { DataTypes, Model, Sequelize } from "sequelize";
 import { Account } from './user.model';
 
 class WaitingList extends Model {
+    [x: string]: any;
     public id!: number;
     public userId!: number;
     public eventId!: number;

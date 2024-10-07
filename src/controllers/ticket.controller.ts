@@ -98,6 +98,7 @@ class TicketController {
         }
         try {
             const { id } = req.userData;
+
             req.body.userId = id;
             const response = await TicketService.cancelEvent(req.body);
             res.status(response.code).json(response.body)

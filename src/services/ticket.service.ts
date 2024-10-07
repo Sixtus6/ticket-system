@@ -52,7 +52,6 @@ class TicketService {
             // Book the ticket immediately if available
             const bookInstance = await Booking.create({ userId, eventId, status: 'BOOKED' }, { transaction });
             event.availableTickets -= 1;
-
             await event.save({ transaction });
             await transaction.commit();
             await user?.addBooking(bookInstance);
@@ -82,7 +81,22 @@ class TicketService {
 
         let response: {};
         const event = await EventsModel.findByPk(id, {
-            include: [Booking, WaitingList],
+            include: [
+                {
+                    model: Booking,
+                    required: false
+                },
+                {
+                    model: WaitingList,
+                    include: [
+                        {
+                            model: Account,
+                            required: false
+                        }
+                    ],
+                    required: false // Optional
+                }
+            ],
         });
 
         if (!event) {
@@ -90,12 +104,23 @@ class TicketService {
             return { code: ApiResponse.code.not_found, body: response };
         }
 
+        let users = event.WaitingLists
+
+        users.forEach((waitingListEntry: any) => {
+            waitingListEntry.dataValues = {
+                userId: waitingListEntry.dataValues.User.id,
+                username: waitingListEntry.dataValues.User.username,
+                email: waitingListEntry.dataValues.User.email
+            }
+        })
+
         const status = {
             eventName: event.name,
             totalTickets: event.totalTickets,
             availableTickets: event.availableTickets,
             bookedTickets: event.totalTickets - event.availableTickets,
-            queueLength: event.WaitingLists.length
+            queueLength: event.WaitingLists.length,
+            usersInQueue: users
         };
 
         response = { error: false, message: ApiResponse.pass.ticket, status }
@@ -105,17 +130,26 @@ class TicketService {
     }
 
     static async cancelEvent(body: any): Promise<any> {
+
         const transaction = await db.sequelize.transaction();
         let response: {};
         const { userId, eventId } = body;
+
+        console.log([userId, eventId])
         const user = await Account.findByPk(userId)
         const booking = await Booking.findOne({ where: { userId, eventId, status: 'BOOKED' }, transaction });
+
+
+
         if (!booking) {
             await transaction.rollback();
             response = { error: true, message: ApiResponse.fail.cannot_book, data: {} }
             return { code: ApiResponse.code.not_found, body: response };
         }
+
+
         booking.status = 'CANCELED';
+
         await booking.save({ transaction });
         const event = await EventsModel.findByPk(eventId, {
             lock: transaction.LOCK.UPDATE,
@@ -131,7 +165,7 @@ class TicketService {
             QueueService.channelInstance.sendToQueue(QueueService.QUEUE_NAME, Buffer.from(JSON.stringify({ userId: userId, eventId })), {
                 persistent: true,
             });
-            console.log(`****************************\nEnqueued cancelled ${event?.name} event by user ${user?.name} with userId of ${userId} for waiting list processing.\n****************************`);
+            console.log(`****************************\n${event?.name} event is cancelled by user ${user?.name} with userId of ${userId}\nreallocating process initiated\n****************************`);
         } else {
             console.error('RabbitMQ channel is not initialized.');
         }
