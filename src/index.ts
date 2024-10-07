@@ -53,8 +53,8 @@ app.use('/admin', adminRouter)
 app.use('/api', approuter);
 
 db.sequelize.sync({ alter: true }).then(() => {
-  const server = app.listen(serverport, () => {
-    QueueService.connectRabbitMQ().then(() => {
+  const server = app.listen(serverport, async () => {
+    await QueueService.connectRabbitMQ(5, 5000).then(() => {
       QueueService.processWaitingListQueue()
     })
       .catch(error => console.error('Initialization failed:', error));;

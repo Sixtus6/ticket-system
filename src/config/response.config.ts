@@ -18,7 +18,7 @@ const ApiResponse = {
         unauthorized: 'Unauthorized',
         adminUnauthorized: 'Admin Unauthorized',
         not_found: 'Not Found',
-        cannot_book: 'Sorry you cant cancel an event ypu have not booked',
+        cannot_book: 'Sorry you cant cancel an event you have not booked',
         not_event_found: 'No Event available',
         server: 'Internal Server Error',
         forbidden: 'Forbidden',

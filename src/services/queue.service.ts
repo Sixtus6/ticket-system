@@ -1,6 +1,7 @@
 import amqp from 'amqplib';
 import { RABBITMQ_HOST, RABBITMQ_PASS, RABBITMQ_PORT, RABBITMQ_USER } from '../config/environment.config';
-import { Booking, db, EventsModel, WaitingList } from '../models/database.connection';
+import { Account, Booking, db, EventsModel, WaitingList } from '../models/database.connection';
+
 
 class QueueService {
 
@@ -9,49 +10,58 @@ class QueueService {
     static QUEUE_NAME = 'waiting_list_queue';
 
 
-    static connectRabbitMQ = async () => {
-        try {
-            const connection = await amqp.connect({
-                protocol: 'amqp',
-                hostname: RABBITMQ_HOST,
-                port: RABBITMQ_PORT,
-                username: RABBITMQ_USER,
-                password: RABBITMQ_PASS,
-            });
+    static connectRabbitMQ = async (retries = 5, timeout = 5000) => {
+        for (let attempt = 1; attempt <= retries; attempt++) {
+            try {
+                const connection = await amqp.connect({
+                    protocol: 'amqp',
+                    hostname: RABBITMQ_HOST,
+                    port: RABBITMQ_PORT,
+                    username: RABBITMQ_USER,
+                    password: RABBITMQ_PASS,
+                });
 
-            const channel = await connection.createChannel();
-            console.log('Connected to RabbitMQ');
-            this.connectionInstance = connection;
-            this.channelInstance = channel;
+                this.connectionInstance = connection;
+                this.channelInstance = await connection.createChannel();
+                console.log('Connected to RabbitMQ');
+                return;
+            } catch (error) {
+                console.error(`Failed to connect to RabbitMQ (Attempt ${attempt} of ${retries})`, error);
 
-            // Ensure queue is set up once on connection
-            await this.setupQueue(channel, this.QUEUE_NAME);
-        } catch (error) {
-            console.error('Failed to connect to RabbitMQ', error);
-            throw error;
+                if (attempt < retries) {
+                    console.log(`Retrying in ${timeout / 1000} seconds...`);
+                    await new Promise(res => setTimeout(res, timeout));
+                } else {
+                    throw new Error('Failed to connect to RabbitMQ after multiple attempts');
+                }
+            }
         }
     };
 
 
     static setupQueue = async (channel: any, queueName: any) => {
         await channel.assertQueue(queueName, {
-            durable: true,  // Messages survive RabbitMQ restarts
+            durable: true,
         });
         console.log(`Queue "${queueName}" is set up`);
     };
 
 
     static enqueueWaitingList = async (userId: number, eventId: number) => {
+
         if (!this.channelInstance) {
             throw new Error('RabbitMQ channel is not initialized. Call connectRabbitMQ first.');
         }
 
         const message = JSON.stringify({ userId, eventId });
+        const user = await Account.findByPk(userId)
+        const event = await EventsModel.findByPk(eventId);
+        await event!.reload({ include: [Booking, WaitingList] });
 
-        // Publish the message to the queue
         this.channelInstance.sendToQueue(this.QUEUE_NAME, Buffer.from(message), { persistent: true });
+        let data: any = { event: event!.name, totalTickets: event!.totalTickets, availableTickets: event!.availableTickets }
 
-        console.log(`Enqueued user ${userId} for event ${eventId} to the waiting list queue`);
+        console.log(`****************************\nEnqueued user ${user?.name} with userId of ${userId} for event ${event?.name} to the waiting list queue\n****************Event-details*******************\nevent_name: ${data.event}\ntotal_tickets:${data.totalTickets}\navailable_ticket:${data.availableTickets}\nqueue_length:${event!.WaitingLists.length}\n****************************`);
     };
 
     // Process messages from the waiting list queue
@@ -76,15 +86,30 @@ class QueueService {
                     });
 
                     if (event && event.availableTickets > 0) {
+                        //Looks for the first person that joined the waitingList
+                        const waitingUser = await WaitingList.findOne({
+                            where: { eventId },
+                            order: [['createdAt', 'ASC']], // Order by createdAt in ascending order
+                            transaction,
+                        });
+                        //If there is no user on the queue cancel the operation
+                        if (!waitingUser) {
+                            await transaction.commit();
+                            this.channelInstance.ack(msg);
+                            console.log('There is no user to assign the Ticket to at the moment')
+                            return;
+                        }
+
                         // Assign the ticket to the user from the waiting list
-                        await Booking.create({ userId, eventId, status: 'BOOKED' }, { transaction });
+                        await Booking.create({ userId: waitingUser!.userId, eventId, status: 'BOOKED', reallocated: true }, { transaction });
+
                         event.availableTickets -= 1;
                         await event.save({ transaction });
-
+                        const user = await Account.findByPk(userId)
                         // Remove the user from the waiting list
                         await WaitingList.destroy({ where: { userId, eventId }, transaction });
-
-                        console.log(`Processed ticket allocation for user ${userId} for event ${eventId}`);
+                        await event!.reload({ include: [Booking, WaitingList] });
+                        console.log(`****************************\nProcessed ticket allocation for user ${user?.name} with userId of ${userId} for ${event.name} event\n****************Event-details*******************\nevent_name: ${event.name}\ntotal_tickets:${event.totalTickets}\navailable_ticket:${event.availableTickets}\nqueue_length:${event!.WaitingLists.length}\n****************************`);
                     }
 
                     await transaction.commit();

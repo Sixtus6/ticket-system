@@ -8,6 +8,7 @@ class Booking extends Model {
     public userId!: number;
     public eventId!: number;
     public status!: string;
+    public reallocated!: boolean;
 }
 
 const initializeBookingModel = (sequelize: Sequelize) => {
@@ -24,6 +25,10 @@ const initializeBookingModel = (sequelize: Sequelize) => {
             status: {
                 type: DataTypes.ENUM('BOOKED', 'CANCELED'),
                 allowNull: false,
+            },
+            reallocated: {
+                type: DataTypes.BOOLEAN,
+                defaultValue: false,
             },
         },
         {
