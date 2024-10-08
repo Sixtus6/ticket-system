@@ -33,11 +33,7 @@ Make sure you have the following installed:
 You can run the project using Docker and Docker Compose.
 
 1. Clone the repository:
-2. git clone https://github.com/Sixtus6/ticket-system
-cd your-repository-name
-
-### Build and run the Docker containers:
 
 ```bash
-
-
+git clone https://github.com/your-repository-url.git
+cd your-repository-name
