@@ -50,7 +50,7 @@ class TicketService {
         }
         await event!.reload({ include: [Booking, WaitingList] });
         if (event.availableTickets > 0) {
-            // Book the ticket immediately if available
+
             const bookInstance = await Booking.create({ userId, eventId, status: 'BOOKED' }, { transaction });
             event.availableTickets -= 1;
             await event.save({ transaction });
@@ -167,26 +167,28 @@ class TicketService {
             console.error('RabbitMQ channel is not initialized.');
         }
         await TicketService.delay(50);
-        await event!.reload({
-            include: [
-                {
-                    model: Booking,
-                    where: {
-                        userId: userId,
-                        eventId: eventId,
-                        status: 'BOOKED',
-                    },
-                },
-                {
-                    model: WaitingList,
-                    // You can add conditions for WaitingList here if needed
-                },
-            ]
-        })
+        await event!.reload({ include: [Booking, WaitingList] })
         response = { error: false, message: ApiResponse.pass.booking_canceled, data: { event: event!.name, totalTickets: event!.totalTickets, availableTickets: event!.availableTickets, queueLength: event!.WaitingLists.length } }
         return { code: ApiResponse.code.success, body: response };
     }
 
 }
+
+// await event!.reload({
+//     include: [
+//         {
+//             model: Booking,
+//             where: {
+//                 userId: userId,
+//                 eventId: eventId,
+//                 status: 'BOOKED',
+//             },
+//         },
+//         {
+//             model: WaitingList,
+
+//         },
+//     ]
+// })
 
 export default TicketService;
