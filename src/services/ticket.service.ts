@@ -6,6 +6,7 @@ import { Account, Booking, db, EventsModel, WaitingList } from "../models/databa
 import QueueService from "./queue.service";
 
 class TicketService {
+    static delay = (ms: any) => new Promise(resolve => setTimeout(resolve, ms));
 
     static async initEvent(body: any): Promise<any> {
         let response: {};
@@ -139,8 +140,6 @@ class TicketService {
         const user = await Account.findByPk(userId)
         const booking = await Booking.findOne({ where: { userId, eventId, status: 'BOOKED' }, transaction });
 
-
-
         if (!booking) {
             await transaction.rollback();
             response = { error: true, message: ApiResponse.fail.cannot_book, data: {} }
@@ -155,21 +154,35 @@ class TicketService {
             lock: transaction.LOCK.UPDATE,
             transaction,
         });
-        event!.availableTickets += 1;
-        await event!.save({ transaction });
 
         await transaction.commit();
         await event!.reload({ include: [Booking, WaitingList] });
         if (QueueService.channelInstance) {
 
-            QueueService.channelInstance.sendToQueue(QueueService.QUEUE_NAME, Buffer.from(JSON.stringify({ userId: userId, eventId })), {
+            await QueueService.channelInstance.sendToQueue(QueueService.QUEUE_NAME, Buffer.from(JSON.stringify({ userId: userId, eventId })), {
                 persistent: true,
             });
             console.log(`****************************\n${event?.name} event is cancelled by user ${user?.name} with userId of ${userId}\nreallocating process initiated\n****************************`);
         } else {
             console.error('RabbitMQ channel is not initialized.');
         }
-
+        await TicketService.delay(50);
+        await event!.reload({
+            include: [
+                {
+                    model: Booking,
+                    where: {
+                        userId: userId,
+                        eventId: eventId,
+                        status: 'BOOKED',
+                    },
+                },
+                {
+                    model: WaitingList,
+                    // You can add conditions for WaitingList here if needed
+                },
+            ]
+        })
         response = { error: false, message: ApiResponse.pass.booking_canceled, data: { event: event!.name, totalTickets: event!.totalTickets, availableTickets: event!.availableTickets, queueLength: event!.WaitingLists.length } }
         return { code: ApiResponse.code.success, body: response };
     }

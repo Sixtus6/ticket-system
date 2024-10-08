@@ -84,7 +84,7 @@ class QueueService {
                         lock: transaction.LOCK.UPDATE,
                         transaction,
                     });
-
+                    console.log(event?.dataValues)
                     if (event && event.availableTickets > 0) {
                         //Looks for the first person that joined the waitingList
                         const waitingUser = await WaitingList.findOne({
@@ -95,6 +95,8 @@ class QueueService {
 
                         //If there is no user on the queue cancel the operation
                         if (!waitingUser) {
+                            event!.availableTickets += 1;
+                            await event!.save({ transaction });
                             await transaction.commit();
                             this.channelInstance.ack(msg);
                             console.log('There is no user to assign the Ticket to at the moment')
@@ -112,7 +114,7 @@ class QueueService {
                         await event.save({ transaction })
                         // await transaction.commit();
                         // Remove the user from the waiting list
-                        const deletedUser = await WaitingList.destroy({ where: { userId, eventId }, transaction });
+                        const deletedUser = await WaitingList.destroy({ where: { userId: waitingUser!.userId, eventId }, transaction });
                         if (deletedUser) {
                             console.log(`removed user ${userThatCancled?.username} with id of ${userThatCancled?.id} from the Queue`)
                         }
