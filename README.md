@@ -50,7 +50,7 @@ After cloning the repository, navigate into the project directory to start the s
 3. Your application will be available at:
 
     ```
-    http://localhost:3000
+    http://localhost:2002
     ```
 
 ---
