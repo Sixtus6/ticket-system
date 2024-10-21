@@ -57,7 +57,7 @@ class TicketService {
             await transaction.commit();
             await user?.addBooking(bookInstance);
             await event?.addBooking(bookInstance);
-            response = { error: false, message: ApiResponse.pass.ticket, data: { event: event.name, totalTickets: event.totalTickets, availableTickets: event.availableTickets } }
+            response = { error: false, message: ApiResponse.pass.ticket, data: { event: event.name, totalTickets: event.totalTickets, availableTickets: event.availableTickets, userDetails: { id: user?.id, name: user?.name, email: user?.email } } }
             return { code: ApiResponse.code.success, body: response };
         } else {
             // No tickets available, add to waiting list
@@ -68,10 +68,11 @@ class TicketService {
                 await user!.addWaitingList(waitingListEntry);
                 await event!.addWaitingList(waitingListEntry);
                 await QueueService.enqueueWaitingList(userId, eventId);
+                await TicketService.delay(50);
                 await event!.reload({ include: [Booking, WaitingList] })
             }
 
-            response = { error: false, message: ApiResponse.pass.waiting_list, data: { event: event.name, totalTickets: event.totalTickets, availableTickets: event.availableTickets, eventQueues: event.WaitingLists.length } }
+            response = { error: false, message: ApiResponse.pass.waiting_list, data: { event: event.name, totalTickets: event.totalTickets, availableTickets: event.availableTickets, eventQueues: event.WaitingLists.length, userDetails: { id: user?.id, name: user?.name, email: user?.email } } }
 
             return { code: ApiResponse.code.success, body: response };
         }
@@ -146,9 +147,7 @@ class TicketService {
             return { code: ApiResponse.code.not_found, body: response };
         }
 
-
         booking.status = 'CANCELED';
-
         await booking.save({ transaction });
         const event = await EventsModel.findByPk(eventId, {
             lock: transaction.LOCK.UPDATE,

@@ -52,7 +52,7 @@ app.get('/', async (req: Request, res: Response) => {
 app.use('/admin', adminRouter)
 app.use('/api', approuter);
 
-db.sequelize.sync({ alter: true }).then(() => {
+db.sequelize.sync({ force: !true }).then(() => {
   const server = app.listen(serverport, async () => {
     await QueueService.connectRabbitMQ(5, 5000).then(() => {
       QueueService.processWaitingListQueue()
